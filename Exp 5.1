@@ -1,0 +1,122 @@
+import java.io.*;
+import java.util.*;
+
+class Student implements Serializable {
+    int studentID;
+    String name;
+    double grade;
+    Student(int studentID, String name, double grade) {
+        this.studentID = studentID;
+        this.name = name;
+        this.grade = grade;
+    }
+}
+
+class Employee implements Serializable {
+    int id;
+    String name;
+    String designation;
+    double salary;
+    Employee(int id, String name, String designation, double salary) {
+        this.id = id;
+        this.name = name;
+        this.designation = designation;
+        this.salary = salary;
+    }
+}
+
+class AppendableObjectOutputStream extends ObjectOutputStream {
+    AppendableObjectOutputStream(OutputStream out) throws IOException {
+        super(out);
+    }
+    protected void writeStreamHeader() throws IOException {
+        reset();
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Scanner sc = new Scanner(System.in);
+
+        // Part A
+        System.out.println("Part A: Sum of Integers Using Autoboxing and Unboxing");
+        System.out.print("Enter integers separated by space: ");
+        String[] inputs = sc.nextLine().split(" ");
+        ArrayList<Integer> numbers = new ArrayList<>();
+        for (String s : inputs) numbers.add(Integer.parseInt(s));
+        int sum = 0;
+        for (int n : numbers) sum += n;
+        System.out.println("Sum of integers: " + sum);
+
+        // Part B
+        System.out.println("\nPart B: Serialization and Deserialization of Student Object");
+        Student s1 = new Student(101, "Rahul", 89.5);
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream("student.dat"))) {
+            oos.writeObject(s1);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream("student.dat"))) {
+            Student s2 = (Student) ois.readObject();
+            System.out.println("Deserialized Student: ID=" + s2.studentID + ", Name=" + s2.name + ", Grade=" + s2.grade);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        // Part C
+        System.out.println("\nPart C: Employee Management System");
+        while (true) {
+            System.out.println("\n1. Add Employee\n2. Display All Employees\n3. Exit");
+            System.out.print("Choose option: ");
+            int choice = sc.nextInt();
+            sc.nextLine();
+
+            if (choice == 1) {
+                try {
+                    System.out.print("Enter Employee ID: ");
+                    int id = sc.nextInt();
+                    sc.nextLine();
+                    System.out.print("Enter Name: ");
+                    String name = sc.nextLine();
+                    System.out.print("Enter Designation: ");
+                    String desig = sc.nextLine();
+                    System.out.print("Enter Salary: ");
+                    double sal = sc.nextDouble();
+                    Employee emp = new Employee(id, name, desig, sal);
+
+                    File file = new File("employees.dat");
+                    boolean append = file.exists();
+                    try (FileOutputStream fos = new FileOutputStream(file, true);
+                         ObjectOutputStream oos = append ? new AppendableObjectOutputStream(fos)
+                                                         : new ObjectOutputStream(fos)) {
+                        oos.writeObject(emp);
+                        System.out.println("Employee added successfully.");
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            } else if (choice == 2) {
+                try (FileInputStream fis = new FileInputStream("employees.dat");
+                     ObjectInputStream ois = new ObjectInputStream(fis)) {
+                    while (true) {
+                        Employee emp = (Employee) ois.readObject();
+                        System.out.println("ID=" + emp.id + ", Name=" + emp.name +
+                                           ", Designation=" + emp.designation + ", Salary=" + emp.salary);
+                    }
+                } catch (EOFException e) {
+                    System.out.println("End of employee records.");
+                } catch (FileNotFoundException e) {
+                    System.out.println("No employee records found.");
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            } else if (choice == 3) {
+                System.out.println("Exiting...");
+                break;
+            } else {
+                System.out.println("Invalid option.");
+            }
+        }
+        sc.close();
+    }
+}
