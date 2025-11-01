@@ -1,0 +1,110 @@
+import java.util.*;
+import java.util.stream.*;
+import java.util.Comparator;
+
+class Employee {
+    String name;
+    int age;
+    double salary;
+    Employee(String name, int age, double salary) {
+        this.name = name;
+        this.age = age;
+        this.salary = salary;
+    }
+    public String toString() {
+        return name + " (Age: " + age + ", Salary: " + salary + ")";
+    }
+}
+
+class Student {
+    String name;
+    double marks;
+    Student(String name, double marks) {
+        this.name = name;
+        this.marks = marks;
+    }
+    public String toString() {
+        return name + " (" + marks + "%)";
+    }
+}
+
+class Product {
+    String name;
+    double price;
+    String category;
+    Product(String name, double price, String category) {
+        this.name = name;
+        this.price = price;
+        this.category = category;
+    }
+    public String toString() {
+        return name + " (" + category + ", Rs." + price + ")";
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+
+        System.out.println("Part A: Sorting Employee Objects Using Lambda Expressions");
+        List<Employee> employees = new ArrayList<>();
+        employees.add(new Employee("Rahul", 25, 45000));
+        employees.add(new Employee("Anita", 30, 55000));
+        employees.add(new Employee("Vijay", 22, 30000));
+        employees.add(new Employee("Sita", 28, 50000));
+
+        System.out.println("\nSort by Name:");
+        employees.sort((e1, e2) -> e1.name.compareTo(e2.name));
+        employees.forEach(System.out::println);
+
+        System.out.println("\nSort by Age:");
+        employees.sort(Comparator.comparingInt(e -> e.age));
+        employees.forEach(System.out::println);
+
+        System.out.println("\nSort by Salary (Descending):");
+        employees.sort((e1, e2) -> Double.compare(e2.salary, e1.salary));
+        employees.forEach(System.out::println);
+
+        System.out.println("\nPart B: Filtering and Sorting Students Using Streams");
+        List<Student> students = Arrays.asList(
+            new Student("Arjun", 82.5),
+            new Student("Meena", 70.0),
+            new Student("Karan", 91.0),
+            new Student("Pooja", 76.0),
+            new Student("Nikhil", 65.5)
+        );
+
+        List<String> topStudents = students.stream()
+            .filter(s -> s.marks > 75)
+            .sorted(Comparator.comparingDouble(s -> s.marks))
+            .map(s -> s.name)
+            .collect(Collectors.toList());
+
+        System.out.println("Students scoring above 75% sorted by marks:");
+        topStudents.forEach(System.out::println);
+
+        System.out.println("\nPart C: Stream Operations on Product Dataset");
+        List<Product> products = Arrays.asList(
+            new Product("Laptop", 55000, "Electronics"),
+            new Product("Headphones", 2000, "Electronics"),
+            new Product("Shirt", 1200, "Clothing"),
+            new Product("Jeans", 1800, "Clothing"),
+            new Product("Mixer", 3500, "Home"),
+            new Product("Vacuum", 7500, "Home")
+        );
+
+        System.out.println("\nProducts Grouped by Category:");
+        Map<String, List<Product>> grouped = products.stream()
+            .collect(Collectors.groupingBy(p -> p.category));
+        grouped.forEach((cat, list) -> System.out.println(cat + ": " + list));
+
+        System.out.println("\nMost Expensive Product in Each Category:");
+        Map<String, Optional<Product>> maxPrice = products.stream()
+            .collect(Collectors.groupingBy(p -> p.category,
+                Collectors.maxBy(Comparator.comparingDouble(p -> p.price))));
+        maxPrice.forEach((cat, prod) -> System.out.println(cat + ": " + prod.get()));
+
+        double avgPrice = products.stream()
+            .collect(Collectors.averagingDouble(p -> p.price));
+        System.out.println("\nAverage Price of All Products: " + avgPrice);
+    }
+}
