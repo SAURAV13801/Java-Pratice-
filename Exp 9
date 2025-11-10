@@ -1,0 +1,99 @@
+import org.springframework.context.annotation.*;
+import org.springframework.stereotype.*;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.transaction.annotation.Transactional;
+import java.util.*;
+
+class Student {
+    private int id;
+    private String name;
+    private String course;
+    private double balance;
+    public Student(int id, String name, String course, double balance) {
+        this.id = id; this.name = name; this.course = course; this.balance = balance;
+    }
+    public int getId() { return id; }
+    public String getName() { return name; }
+    public String getCourse() { return course; }
+    public double getBalance() { return balance; }
+    public void setName(String name) { this.name = name; }
+    public void setCourse(String course) { this.course = course; }
+    public void setBalance(double balance) { this.balance = balance; }
+    public String toString() { return id + " | " + name + " | " + course + " | " + balance; }
+}
+
+@Repository
+class StudentDAO {
+    private final Map<Integer, Student> db = new HashMap<>();
+    public void save(Student s) { db.put(s.getId(), s); }
+    public Student get(int id) { return db.get(id); }
+    public List<Student> list() { return new ArrayList<>(db.values()); }
+    public void delete(int id) { db.remove(id); }
+}
+
+@Service
+class FeeService {
+    private final StudentDAO dao;
+    public FeeService(StudentDAO dao) { this.dao = dao; }
+    @Transactional
+    public void payFee(int id, double amount) {
+        Student s = dao.get(id);
+        if (s != null) s.setBalance(s.getBalance() - amount);
+    }
+    @Transactional
+    public void refundFee(int id, double amount) {
+        Student s = dao.get(id);
+        if (s != null) s.setBalance(s.getBalance() + amount);
+    }
+}
+
+@Configuration
+@EnableTransactionManagement
+@ComponentScan(basePackages = "")
+class AppConfig {
+    @Bean
+    public StudentDAO studentDAO() { return new StudentDAO(); }
+    @Bean
+    public FeeService feeService(StudentDAO dao) { return new FeeService(dao); }
+}
+
+public class OnlineStudentManagementSystem {
+    public static void main(String[] args) {
+        AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(AppConfig.class);
+        StudentDAO dao = ctx.getBean(StudentDAO.class);
+        FeeService fee = ctx.getBean(FeeService.class);
+        Scanner sc = new Scanner(System.in);
+        int id = 1;
+        while (true) {
+            System.out.println("1.Add 2.View 3.Pay 4.Refund 5.Delete 6.Exit");
+            int ch = sc.nextInt();
+            switch (ch) {
+                case 1:
+                    System.out.print("Name: ");
+                    String name = sc.next();
+                    System.out.print("Course: ");
+                    String course = sc.next();
+                    dao.save(new Student(id++, name, course, 10000));
+                    break;
+                case 2:
+                    dao.list().forEach(System.out::println);
+                    break;
+                case 3:
+                    System.out.print("ID: ");
+                    fee.payFee(sc.nextInt(), 2000);
+                    break;
+                case 4:
+                    System.out.print("ID: ");
+                    fee.refundFee(sc.nextInt(), 1000);
+                    break;
+                case 5:
+                    System.out.print("ID: ");
+                    dao.delete(sc.nextInt());
+                    break;
+                case 6:
+                    ctx.close();
+                    System.exit(0);
+            }
+        }
+    }
+}
