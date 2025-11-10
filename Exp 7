@@ -1,0 +1,166 @@
+import java.io.*;
+import java.sql.*;
+import javax.servlet.*;
+import javax.servlet.annotation.WebServlet;
+import javax.servlet.http.*;
+import java.time.LocalDate;
+
+@WebServlet(urlPatterns={"/", "/login", "/doLogin", "/employees", "/searchEmployee", "/attendance", "/submitAttendance"})
+public class NimbusWebAppServlet extends HttpServlet {
+    private String dbUrl = "jdbc:mysql://localhost:3306/nimbusdb";
+    private String dbUser = "root";
+    private String dbPass = "password";
+
+    public static void main(String[] args) {
+        System.out.println("This servlet must be deployed to a servlet container (e.g., Tomcat). It is not a standalone application.");
+    }
+
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        String path = req.getServletPath();
+        resp.setContentType("text/html;charset=UTF-8");
+        PrintWriter out = resp.getWriter();
+        switch (path) {
+            case "/":
+            case "/login":
+                out.println("<!doctype html><html><head><title>Login</title></head><body>");
+                out.println("<h2>User Login</h2>");
+                out.println("<form method='post' action='doLogin'>");
+                out.println("Username: <input name='username' required><br>");
+                out.println("Password: <input type='password' name='password' required><br>");
+                out.println("<input type='submit' value='Login'></form>");
+                out.println("<hr><a href='employees'>Employee List</a><br>");
+                out.println("<a href='attendance'>Student Attendance Portal</a>");
+                out.println("</body></html>");
+                break;
+            case "/employees":
+                out.println("<!doctype html><html><head><title>Employees</title></head><body>");
+                out.println("<h2>Employee Records</h2>");
+                out.println("<form method='get' action='searchEmployee'>Search EmpID: <input name='empid'><input type='submit' value='Search'></form>");
+                out.println("<br><table border='1'><tr><th>EmpID</th><th>Name</th><th>Salary</th></tr>");
+                try (Connection c = DriverManager.getConnection(dbUrl, dbUser, dbPass);
+                     Statement s = c.createStatement();
+                     ResultSet rs = s.executeQuery("SELECT EmpID, Name, Salary FROM Employee")) {
+                    while (rs.next()) {
+                        out.println("<tr><td>" + rs.getInt("EmpID") + "</td><td>" + escapeHtml(rs.getString("Name")) + "</td><td>" + rs.getDouble("Salary") + "</td></tr>");
+                    }
+                } catch (Exception e) {
+                    out.println("<tr><td colspan='3'>Error: " + escapeHtml(e.getMessage()) + "</td></tr>");
+                }
+                out.println("</table><br><a href='login'>Back to Home</a></body></html>");
+                break;
+            case "/searchEmployee":
+                String id = req.getParameter("empid");
+                out.println("<!doctype html><html><head><title>Search Result</title></head><body>");
+                out.println("<h2>Search Result</h2>");
+                if (id == null || id.trim().isEmpty()) {
+                    out.println("Please provide an Employee ID.<br>");
+                } else {
+                    try (Connection c = DriverManager.getConnection(dbUrl, dbUser, dbPass);
+                         PreparedStatement ps = c.prepareStatement("SELECT EmpID, Name, Salary FROM Employee WHERE EmpID = ?")) {
+                        ps.setInt(1, Integer.parseInt(id));
+                        try (ResultSet rs = ps.executeQuery()) {
+                            if (rs.next()) {
+                                out.println("<table border='1'><tr><th>EmpID</th><th>Name</th><th>Salary</th></tr>");
+                                out.println("<tr><td>" + rs.getInt("EmpID") + "</td><td>" + escapeHtml(rs.getString("Name")) + "</td><td>" + rs.getDouble("Salary") + "</td></tr>");
+                                out.println("</table>");
+                            } else {
+                                out.println("No employee found with ID " + escapeHtml(id));
+                            }
+                        }
+                    } catch (Exception e) {
+                        out.println("Error: " + escapeHtml(e.getMessage()));
+                    }
+                }
+                out.println("<br><a href='employees'>Back to Employees</a></body></html>");
+                break;
+            case "/attendance":
+                out.println("<!doctype html><html><head><title>Attendance</title></head><body>");
+                out.println("<h2>Student Attendance Portal</h2>");
+                out.println("<form method='post' action='submitAttendance'>");
+                out.println("Student ID: <input name='studentId' required><br>");
+                out.println("Date: <input type='date' name='attDate' value='" + LocalDate.now() + "' required><br>");
+                out.println("Status: <select name='status'><option value='Present'>Present</option><option value='Absent'>Absent</option></select><br>");
+                out.println("<input type='submit' value='Submit Attendance'></form>");
+                out.println("<hr><h3>Recent Attendance Entries</h3>");
+                out.println("<table border='1'><tr><th>ID</th><th>StudentID</th><th>Date</th><th>Status</th></tr>");
+                try (Connection c = DriverManager.getConnection(dbUrl, dbUser, dbPass);
+                     Statement s = c.createStatement();
+                     ResultSet rs = s.executeQuery("SELECT id, student_id, att_date, status FROM Attendance ORDER BY att_date DESC LIMIT 10")) {
+                    while (rs.next()) {
+                        out.println("<tr><td>" + rs.getInt("id") + "</td><td>" + escapeHtml(rs.getString("student_id")) + "</td><td>" + rs.getDate("att_date") + "</td><td>" + escapeHtml(rs.getString("status")) + "</td></tr>");
+                    }
+                } catch (Exception e) {
+                    out.println("<tr><td colspan='4'>Error: " + escapeHtml(e.getMessage()) + "</td></tr>");
+                }
+                out.println("</table><br><a href='login'>Back to Home</a></body></html>");
+                break;
+            default:
+                resp.sendError(HttpServletResponse.SC_NOT_FOUND);
+        }
+    }
+
+    protected void doPost(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        String path = req.getServletPath();
+        resp.setContentType("text/html;charset=UTF-8");
+        PrintWriter out = resp.getWriter();
+        switch (path) {
+            case "/doLogin":
+                String user = req.getParameter("username");
+                String pass = req.getParameter("password");
+                boolean valid = "admin".equals(user) && "admin123".equals(pass);
+                out.println("<!doctype html><html><head><title>Login Result</title></head><body>");
+                if (valid) {
+                    out.println("<h2>Welcome, " + escapeHtml(user) + "!</h2>");
+                    out.println("<a href='employees'>View Employees</a><br>");
+                    out.println("<a href='attendance'>Open Attendance Portal</a><br>");
+                    out.println("<a href='login'>Logout</a>");
+                } else {
+                    out.println("<h2>Invalid credentials</h2>");
+                    out.println("<a href='login'>Try Again</a>");
+                }
+                out.println("</body></html>");
+                break;
+            case "/submitAttendance":
+                String studentId = req.getParameter("studentId");
+                String attDate = req.getParameter("attDate");
+                String status = req.getParameter("status");
+                out.println("<!doctype html><html><head><title>Attendance Result</title></head><body>");
+                if (studentId == null || attDate == null || status == null) {
+                    out.println("Missing fields<br><a href='attendance'>Back</a>");
+                } else {
+                    try (Connection c = DriverManager.getConnection(dbUrl, dbUser, dbPass);
+                         PreparedStatement ps = c.prepareStatement("INSERT INTO Attendance(student_id, att_date, status) VALUES (?, ?, ?)")) {
+                        ps.setString(1, studentId);
+                        ps.setDate(2, Date.valueOf(attDate));
+                        ps.setString(3, status);
+                        int r = ps.executeUpdate();
+                        if (r > 0) {
+                            out.println("<h2>Attendance saved</h2>");
+                        } else {
+                            out.println("<h2>Failed to save attendance</h2>");
+                        }
+                    } catch (Exception e) {
+                        out.println("<h2>Error: " + escapeHtml(e.getMessage()) + "</h2>");
+                    }
+                    out.println("<a href='attendance'>Back to Attendance</a>");
+                }
+                out.println("</body></html>");
+                break;
+            default:
+                resp.sendError(HttpServletResponse.SC_NOT_FOUND);
+        }
+    }
+
+    public void init() throws ServletException {
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+        } catch (Exception e) {
+            throw new ServletException(e);
+        }
+    }
+
+    private String escapeHtml(String s) {
+        if (s == null) return "";
+        return s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;").replace("'","&#x27;");
+    }
+}
