@@ -1,0 +1,100 @@
+import org.springframework.context.annotation.*; import org.hibernate.*; import org.hibernate.cfg.*; import org.springframework.orm.hibernate5.*; import org.springframework.transaction.annotation.EnableTransactionManagement; import org.springframework.transaction.annotation.Transactional; import org.apache.commons.dbcp2.BasicDataSource; import javax.sql.DataSource; import javax.persistence.*; import java.util.*; import java.math.BigDecimal;
+
+@Configuration @EnableTransactionManagement public class CombinedSpringHibernateApp {
+    public static void main(String[] args) {
+        AnnotationConfigApplicationContext ctx = new AnnotationConfigApplicationContext(CombinedSpringHibernateApp.class);
+        System.out.println("=== Part A: Dependency Injection ===");
+        Student s = ctx.getBean(Student.class);
+        System.out.println(s.info());
+        GenericDao dao = ctx.getBean(GenericDao.class);
+        SessionFactory sf = ctx.getBean(SessionFactory.class);
+        System.out.println("\n=== Part B: Hibernate CRUD ===");
+        StudentEntity e = new StudentEntity("Alice",20);
+        Integer id = (Integer) dao.save(e);
+        System.out.println("Saved: " + e);
+        StudentEntity found = dao.find(StudentEntity.class, id);
+        System.out.println("Found: " + found);
+        found.setAge(22); dao.update(found);
+        System.out.println("Updated: " + dao.find(StudentEntity.class, id));
+        dao.delete(found);
+        System.out.println("Deleted student id=" + id);
+        System.out.println("\n=== Part C: Transaction Management ===");
+        AccountService acctSvc = ctx.getBean(AccountService.class);
+        Account a1 = new Account("A1001", new BigDecimal("1000.00"));
+        Account a2 = new Account("A1002", new BigDecimal("300.00"));
+        dao.save(a1); dao.save(a2);
+        System.out.println("Before transfer: " + a1 + " | " + a2);
+        try { acctSvc.transfer("A1001","A1002",new BigDecimal("150.00")); System.out.println("Transfer success"); } catch(Exception ex){ System.out.println("Transfer failed: "+ex.getMessage()); }
+        Account after1 = dao.execute(ses->ses.createQuery("from Account where accountNumber=:a",Account.class).setParameter("a","A1001").uniqueResult());
+        Account after2 = dao.execute(ses->ses.createQuery("from Account where accountNumber=:a",Account.class).setParameter("a","A1002").uniqueResult());
+        System.out.println("After transfer: " + after1 + " | " + after2);
+        ctx.close();
+    }
+
+    @Bean public DataSource dataSource() {
+        BasicDataSource ds = new BasicDataSource();
+        ds.setUrl("jdbc:mysql://localhost:3306/nimbusdb?useSSL=false&serverTimezone=UTC");
+        ds.setUsername("root"); ds.setPassword("password");
+        ds.setDriverClassName("com.mysql.cj.jdbc.Driver"); return ds;
+    }
+
+    @Bean public LocalSessionFactoryBean sessionFactory(DataSource ds) {
+        LocalSessionFactoryBean sf = new LocalSessionFactoryBean();
+        sf.setDataSource(ds); sf.setPackagesToScan("com.example");
+        Properties p = new Properties();
+        p.put("hibernate.dialect","org.hibernate.dialect.MySQL8Dialect");
+        p.put("hibernate.hbm2ddl.auto","update");
+        p.put("hibernate.show_sql","true");
+        sf.setHibernateProperties(p); return sf;
+    }
+
+    @Bean public PlatformTransactionManager txManager(SessionFactory sf) {
+        return new HibernateTransactionManager(sf);
+    }
+
+    @Bean public Course course(){ return new Course("Computer Science"); }
+    @Bean public Student student(){ return new Student("Kavya S", course()); }
+    @Bean public GenericDao dao(SessionFactory sf){ return new GenericDao(sf); }
+    @Bean public AccountService accountService(SessionFactory sf){ return new AccountServiceImpl(sf); }
+
+    // === Classes ===
+    public static class Course { private String name; public Course(String name){this.name=name;} public String getName(){return name;} }
+    public static class Student { private String studentName; private Course course; public Student(String n,Course c){studentName=n;course=c;} public String info(){return "Student: "+studentName+" | Course: "+course.getName();} }
+
+    @Entity @Table(name="students")
+    public static class StudentEntity { @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Integer id; @Column private String name; @Column private Integer age;
+        public StudentEntity(){} public StudentEntity(String n,Integer a){name=n;age=a;} public Integer getId(){return id;} public String getName(){return name;} public void setAge(Integer a){age=a;} public Integer getAge(){return age;}
+        public String toString(){return "StudentEntity{id="+id+", name='"+name+"', age="+age+"}";}
+    }
+
+    @Entity @Table(name="accounts")
+    public static class Account { @Id @GeneratedValue(strategy=GenerationType.IDENTITY) private Integer id; @Column(nullable=false,unique=true) private String accountNumber; @Column(nullable=false,precision=19,scale=2) private BigDecimal balance;
+        public Account(){} public Account(String acc,BigDecimal bal){accountNumber=acc;balance=bal;} public Integer getId(){return id;} public String getAccountNumber(){return accountNumber;} public BigDecimal getBalance(){return balance;} public void setBalance(BigDecimal b){balance=b;}
+        public String toString(){return "Account{id="+id+", acc='"+accountNumber+"', bal="+balance+"}";}
+    }
+
+    public static class GenericDao {
+        private final SessionFactory sf; public GenericDao(SessionFactory sf){this.sf=sf;}
+        public <T> Object save(T e){return execute(s->{s.save(e);return null;});}
+        public <T> void update(T e){execute(s->{s.update(e);return null;});}
+        public <T> void delete(T e){execute(s->{s.delete(e);return null;});}
+        public <T> T find(Class<T> c,Object id){return execute(s->s.get(c,(java.io.Serializable)id));}
+        public <R> R execute(java.util.function.Function<Session,R> work){Transaction t=null;try(Session s=sf.openSession()){t=s.beginTransaction();R r=work.apply(s);t.commit();return r;}catch(RuntimeException e){if(t!=null)t.rollback();throw e;}}
+    }
+
+    public interface AccountService { void transfer(String from,String to,BigDecimal amt); }
+
+    public static class AccountServiceImpl implements AccountService {
+        private final SessionFactory sf; public AccountServiceImpl(SessionFactory sf){this.sf=sf;}
+        @Transactional public void transfer(String from,String to,BigDecimal amt){
+            try(Session s=sf.getCurrentSession()){
+                Account src=s.createQuery("from Account where accountNumber=:a",Account.class).setParameter("a",from).uniqueResult();
+                Account dst=s.createQuery("from Account where accountNumber=:a",Account.class).setParameter("a",to).uniqueResult();
+                if(src==null||dst==null)throw new RuntimeException("Account not found");
+                if(src.getBalance().compareTo(amt)<0)throw new RuntimeException("Insufficient funds");
+                src.setBalance(src.getBalance().subtract(amt)); dst.setBalance(dst.getBalance().add(amt));
+                s.update(src); s.update(dst);
+            }
+        }
+    }
+}
